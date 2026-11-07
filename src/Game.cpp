@@ -1,4 +1,3 @@
-#include <iostream>
 #include <optional>
 #include "Game.hpp"
 #include "SFML/Graphics/Rect.hpp"
@@ -12,7 +11,6 @@
 #include "SFML/Window/VideoMode.hpp"
 
 namespace {
-    
     sf::RectangleShape makeWall(sf::Vector2f position, sf::Vector2f size) {
         sf::RectangleShape wall(size);
 
@@ -22,15 +20,49 @@ namespace {
         return wall;
     }
 
-    Target makeTarget(sf::Vector2f position, sf::Vector2f size) {
+    Target makeTarget(sf::Vector2f position, sf::Vector2f size, sf::Color color) {
         sf::RectangleShape targetShape(size);
 
         targetShape.setPosition(position);
-        targetShape.setFillColor(sf::Color::Red);
+        targetShape.setFillColor(color);
 
-        Target target { targetShape };
+        Target target { targetShape , color };
 
         return target;
+    }
+
+    sf::Vector2f getDirection() {
+        sf::Vector2f direction = {0.0f, 0.0f};
+        
+        if (
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Right) ||
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::D)
+        ) {
+            direction += { 1.0f, 0.0f };
+        }
+    
+        if (
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Left) ||
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::A)
+        ) {
+            direction += { -1.0f, 0.0f };
+        }
+    
+        if (
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Up) ||
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::W)
+        ) {
+            direction += { 0.0f, -1.0f };
+        }
+    
+        if (
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Down) ||
+            sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::S)
+        ) {
+            direction += { 0.0f, 1.0f };
+        }
+    
+        return direction;
     }
 }
 
@@ -38,6 +70,7 @@ Game::Game()
     : m_fixedDt(sf::seconds(1.0f / 60.0f))
     , m_window(sf::VideoMode({800, 600}), "My Window")
     , m_player({40.0f, 40.0f})
+    , m_sword({90.0f, 24.0f})
     , m_attackPhase(AttackPhase::None) 
     , m_facing({1.0f, 0.0f})
     , m_speed(250.0f)
@@ -47,6 +80,9 @@ Game::Game()
     m_player.setFillColor(sf::Color::Green);
     m_player.setPosition({350.0f, 250.0f});
     m_window.setFramerateLimit(144);
+
+    m_sword.setFillColor(sf::Color::Yellow);
+    m_sword.setOrigin({0.0f, 12.0f});
 
     sf::RectangleShape upWall =    makeWall({0.f, 0.f  }, {800.f, 16.f });
     sf::RectangleShape downWall =  makeWall({0.f, 584.f}, {800.f, 16.f });
@@ -60,10 +96,11 @@ Game::Game()
     m_walls.push_back(makeWall({200.f,  200.f}, {64.f,  64.f }));
     m_walls.push_back(makeWall({450.f,  350.f}, {96.f,  48.f }));
 
-    m_targets.push_back(makeTarget({80.0f, 80.0f}, {40.0f, 40.0f}));
-    m_targets.push_back(makeTarget({400.0f, 280.0f}, {40.0f, 40.0f}));
-    m_targets.push_back(makeTarget({180.0f, 380.0f}, {40.0f, 40.0f}));
-    m_targets.push_back(makeTarget({300.0f, 500.0f}, {40.0f, 40.0f}));
+    m_targets.push_back(makeTarget({80.0f, 80.0f}, {40.0f, 40.0f}, sf::Color::Red));
+    m_targets.push_back(makeTarget({400.0f, 280.0f}, {40.0f, 40.0f}, sf::Color::Red));
+    m_targets.push_back(makeTarget({180.0f, 380.0f}, {40.0f, 40.0f}, sf::Color::Red));
+    m_targets.push_back(makeTarget({300.0f, 500.0f}, {40.0f, 40.0f}, sf::Color::Red));
+    m_targets.push_back(makeTarget({500.0f, 400.0f}, {40.0f, 40.0f}, sf::Color::Blue));
 }
 
 void Game::processEvents() {
@@ -82,52 +119,61 @@ void Game::processEvents() {
     }
 }
 
-void Game::update(sf::Time dt) {
-    sf::Vector2f direction = { 0.0f, 0.0f };
 
+
+void Game::update(sf::Time dt) {
     if (m_attackTimer > 0.0f) {
         m_attackTimer -= dt.asSeconds();
-    }
-    else if (m_wantAttack && m_attackTimer <= 0.0) {
-        m_attackPhase = AttackPhase::None;
-        std::cout << "Attack phase: None\n";
+        if (m_attackTimer <= 0.0f) {
+            m_attackPhase = AttackPhase::None;
+        }
     }
 
     if (m_wantAttack && m_attackPhase == AttackPhase::None) {
+        constexpr float kRange = 90.0f + 20.0f;
+        constexpr float kRangeSquared = kRange * kRange;
+        const float kHalfAngleCos = 0.707f;
+        
         m_attackPhase = AttackPhase::Swing;
-        m_attackTimer = 2.0f;
-        std::cout << "Player has attacked\n";
+        m_attackTimer = 0.5f;
+
+        const sf::Vector2f playerCenter = m_player.getGlobalBounds().getCenter();
+        m_sword.setPosition(playerCenter);
+        m_sword.setRotation(m_facing.angle());
+        
+        for (auto& target: m_targets) {
+            if (target.hit) {
+                continue;
+            }
+            
+            const sf::Vector2f targetCenter = target.shape.getGlobalBounds().getCenter(); 
+            
+            const sf::Vector2f toTarget = targetCenter - playerCenter;
+
+            const float distanceSquaredToTarget = toTarget.lengthSquared();
+
+            if (distanceSquaredToTarget <= 0.0f) {
+                continue;
+            }
+
+            const float facingDot = m_facing.dot(toTarget.normalized());
+
+            if (
+                distanceSquaredToTarget < kRangeSquared &&
+                facingDot > kHalfAngleCos
+            ) {
+                target.hit = true;
+            }
+        }
     }
 
     m_wantAttack = false;
 
-    if (
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Right) ||
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::D)
-    ) {
-        direction += { 1.0f, 0.0f };
+    if (m_attackPhase == AttackPhase::Swing) {
+        return;
     }
-
-    if (
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Left) ||
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::A)
-    ) {
-        direction += { -1.0f, 0.0f };
-    }
-
-    if (
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Up) ||
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::W)
-    ) {
-        direction += { 0.0f, -1.0f };
-    }
-
-    if (
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::Down) ||
-        sf::Keyboard::isKeyPressed(sf::Keyboard::Scan::S)
-    ) {
-        direction += { 0.0f, 1.0f };
-    }
+    
+    const sf::Vector2f direction = getDirection();
 
     if (direction.lengthSquared() <= 0.0f) {
         return;
@@ -135,7 +181,7 @@ void Game::update(sf::Time dt) {
 
     m_facing = direction.normalized();
 
-    std::cout << "facing: x: " << m_facing.x << ", y: " << m_facing.y << "\n";
+    // std::cout << "facing: x: " << m_facing.x << ", y: " << m_facing.y << "\n";
 
     sf::Vector2f velocity = direction.normalized() * (m_speed * dt.asSeconds());
 
@@ -176,14 +222,20 @@ void Game::update(sf::Time dt) {
 
 void Game::render() {
     m_window.clear(sf::Color::Black);
+    
+    for (auto& target : m_targets) {
+        target.shape.setFillColor(target.hit ? sf::Color::Yellow : target.baseColor);
+        m_window.draw(target.shape);
+    }
+
+    if (m_attackPhase == AttackPhase::Swing) {
+        m_window.draw(m_sword);
+    }
 
     for (const auto& wall : m_walls) {
         m_window.draw(wall);
     }
     
-    for (const auto& target : m_targets) {
-        m_window.draw(target.shape);
-    }
 
     m_window.draw(m_player);
 

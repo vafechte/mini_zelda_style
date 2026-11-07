@@ -1,4 +1,5 @@
 #pragma once
+#include "SFML/Graphics/Color.hpp"
 #include "SFML/Graphics/RectangleShape.hpp"
 #include "SFML/Graphics/RenderWindow.hpp"
 #include "SFML/System/Time.hpp"
@@ -7,10 +8,11 @@
 
 struct Target {
     sf::RectangleShape shape;
+    sf::Color baseColor;
     bool hit = false;
 };
 
-enum AttackPhase {
+enum class AttackPhase {
     Swing,
     None
 };
@@ -26,6 +28,7 @@ private:
     
     sf::RenderWindow m_window;
     sf::RectangleShape m_player;
+    sf::RectangleShape m_sword;
 
     AttackPhase m_attackPhase;
 
