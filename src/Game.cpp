@@ -72,6 +72,8 @@ Game::Game()
     , m_player({40.0f, 40.0f})
     , m_sword({90.0f, 24.0f})
     , m_attackPhase(AttackPhase::None) 
+    , m_enemyState(EnemyState::Idle)
+    , m_enemyStateTimer(0.0f)
     , m_facing({1.0f, 0.0f})
     , m_speed(250.0f)
     , m_attackTimer(0.0f)
@@ -103,6 +105,42 @@ Game::Game()
     m_targets.push_back(makeTarget({500.0f, 400.0f}, {40.0f, 40.0f}, sf::Color::Blue));
 }
 
+void Game::moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity) {
+    for (const auto& wall : m_walls) {
+        sf::FloatRect wallRect = wall.getGlobalBounds();
+
+        sf::FloatRect playerRect = m_player.getGlobalBounds();
+
+        playerRect.position.x += velocity.x;
+
+        std::optional<sf::FloatRect> rect = playerRect.findIntersection(wallRect);
+
+        if (rect.has_value()) {
+            const float invertDirection = velocity.x > 0 ? -1.0f : 1.0f;
+
+            velocity.x += rect->size.x * invertDirection;
+        }
+    }
+
+    for (const auto& wall : m_walls) {
+        sf::FloatRect wallRect = wall.getGlobalBounds();
+
+        sf::FloatRect playerRect = m_player.getGlobalBounds();
+
+        playerRect.position.y += velocity.y;
+
+        std::optional<sf::FloatRect> rect = playerRect.findIntersection(wallRect);
+
+        if (rect.has_value()) {
+            const float invertDirection = velocity.y > 0 ? -1.0f : 1.0f;
+
+            velocity.y += rect->size.y * invertDirection;
+        }
+       }
+   
+    body.move(velocity);
+}
+
 void Game::processEvents() {
     while (const std::optional event = m_window.pollEvent()) {
         if (event->is<sf::Event::Closed>()) {
@@ -119,9 +157,7 @@ void Game::processEvents() {
     }
 }
 
-
-
-void Game::update(sf::Time dt) {
+void Game::updatePlayer(sf::Time dt) {
     if (m_attackTimer > 0.0f) {
         m_attackTimer -= dt.asSeconds();
         if (m_attackTimer <= 0.0f) {
@@ -181,43 +217,14 @@ void Game::update(sf::Time dt) {
 
     m_facing = direction.normalized();
 
-    // std::cout << "facing: x: " << m_facing.x << ", y: " << m_facing.y << "\n";
-
     sf::Vector2f velocity = direction.normalized() * (m_speed * dt.asSeconds());
 
-    for (const auto& wall : m_walls) {
-        sf::FloatRect wallRect = wall.getGlobalBounds();
+    moveWithCollisions(m_player, velocity);
+}
 
-        sf::FloatRect playerRect = m_player.getGlobalBounds();
 
-        playerRect.position.x += velocity.x;
-
-        std::optional<sf::FloatRect> rect = playerRect.findIntersection(wallRect);
-
-        if (rect.has_value()) {
-            const float invertDirection = velocity.x > 0 ? -1.0f : 1.0f;
-
-            velocity.x += rect->size.x * invertDirection;
-        }
-    }
-
-    for (const auto& wall : m_walls) {
-        sf::FloatRect wallRect = wall.getGlobalBounds();
-
-        sf::FloatRect playerRect = m_player.getGlobalBounds();
-
-        playerRect.position.y += velocity.y;
-
-        std::optional<sf::FloatRect> rect = playerRect.findIntersection(wallRect);
-
-        if (rect.has_value()) {
-            const float invertDirection = velocity.y > 0 ? -1.0f : 1.0f;
-
-            velocity.y += rect->size.y * invertDirection;
-        }
-    }
-
-    m_player.move(velocity);
+void Game::update(sf::Time dt) {
+    updatePlayer(dt);
 }
 
 void Game::render() {

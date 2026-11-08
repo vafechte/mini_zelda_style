@@ -17,6 +17,15 @@ enum class AttackPhase {
     None
 };
 
+enum class EnemyState { 
+    Idle,
+    Chase,
+    Windup,
+    Strike,
+    Recover,
+    Dead
+};
+
 class Game {
 public:
     Game();
@@ -32,6 +41,9 @@ private:
 
     AttackPhase m_attackPhase;
 
+    EnemyState m_enemyState;
+    float m_enemyStateTimer;
+
     std::vector<sf::RectangleShape> m_walls;
     std::vector<Target> m_targets;
 
@@ -44,5 +56,11 @@ private:
 
     void processEvents();
     void update(sf::Time dt);
+    void updatePlayer(sf::Time dt);
+    void updateEnemy(sf::Time dt);
     void render();
+
+    void moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity);
+
+    void setEnemyState(EnemyState newState);
 };
