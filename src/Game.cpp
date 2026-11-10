@@ -1,5 +1,6 @@
 #include <iostream>
 #include <optional>
+#include <string_view>
 #include "Game.hpp"
 #include "SFML/Graphics/Rect.hpp"
 #include "SFML/Graphics/RectangleShape.hpp"
@@ -64,6 +65,19 @@ namespace {
         }
     
         return direction;
+    }
+
+    constexpr std::string_view getEnemyStateName(EnemyState state) {
+        switch (state) {
+            case EnemyState::Idle: return "Idle";
+            case EnemyState::Chase: return "Chase";
+            case EnemyState::WindUp: return "WindUp";
+            case EnemyState::Strike: return "Strike";
+            case EnemyState::Recover: return "Recover";
+            case EnemyState::Dead: return "Dead";
+        }
+
+        return "The current state is not include in the switch, please add it";
     }
 }
 
@@ -142,7 +156,7 @@ void Game::moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity) {
 
             velocity.y += rect->size.y * invertDirection;
         }
-       }
+    }
    
     body.move(velocity);
 }
@@ -229,13 +243,18 @@ void Game::updatePlayer(sf::Time dt) {
 }
 
 void Game::setEnemyState(EnemyState newState) {
-    std::cout << "state " << static_cast<int>(m_enemyState) << " to " << static_cast<int>(newState) << "\n";
+    std::string_view oldStateName = getEnemyStateName(m_enemyState);
+    std::string_view newStateName = getEnemyStateName(newState);
+    
+    std::cout << "state " <<  oldStateName << " to " <<  newStateName << "\n";
     m_enemyState = newState;
     m_enemyStateTimer = 0.0f;
 }
 
 void Game::updateEnemy(sf::Time dt) {
     constexpr float speed = 150.0f;
+    constexpr float kStrikeRange = 60.0f;
+    constexpr float kStrikeRangeSquared = kStrikeRange * kStrikeRange;
     constexpr float kDetectionRange = 200.0f;
     constexpr float kDetectionRangeSquared = kDetectionRange * kDetectionRange;
     
@@ -257,14 +276,56 @@ void Game::updateEnemy(sf::Time dt) {
             }
             break;
         case EnemyState::Chase: {
-                if (distanceToPlayerSquared > kDetectionRangeSquared) {
-                    setEnemyState(EnemyState::Idle);
-                }
-
-                sf::Vector2f velocity = toPlayer.normalized() * (speed * dt.asSeconds());
-                moveWithCollisions(m_enemy, velocity);
+            if (distanceToPlayerSquared <= kStrikeRangeSquared) {
+                setEnemyState(EnemyState::WindUp);
+                break;
             }
+            
+            if (distanceToPlayerSquared > kDetectionRangeSquared) {
+                setEnemyState(EnemyState::Idle);
+            }
+
+            sf::Vector2f velocity = toPlayer.normalized() * (speed * dt.asSeconds());
+            moveWithCollisions(m_enemy, velocity);
+        }
             break;
+        case EnemyState::WindUp: {
+            constexpr float WindUpChargeStrikeTime = 0.3f;
+
+            m_enemy.setFillColor(sf::Color::Yellow);
+            
+            m_enemyStateTimer += dt.asSeconds();
+
+            if (m_enemyStateTimer >= WindUpChargeStrikeTime) {
+                setEnemyState(EnemyState::Strike);
+            }
+        }
+            break;
+        case EnemyState::Strike: {
+            constexpr float kForce = 40.0f;
+            
+            m_enemy.setFillColor(sf::Color::Magenta);
+
+            if (distanceToPlayerSquared > kStrikeRangeSquared) {
+                setEnemyState(EnemyState::Chase);
+                break;
+            }
+
+            sf::Vector2f knockback = toPlayer.normalized() * kForce;
+            moveWithCollisions(m_player, knockback);
+            setEnemyState(EnemyState::Recover);
+        }
+        case EnemyState::Recover: {
+            constexpr float recoverTime = 0.4f;
+
+            m_enemyStateTimer += dt.asSeconds();
+
+            if (m_enemyStateTimer >= recoverTime) {
+                setEnemyState(EnemyState::Chase);
+            }
+        }
+            break;
+        case EnemyState::Dead: break;
         default:
             break;
     }

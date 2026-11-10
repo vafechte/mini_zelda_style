@@ -20,7 +20,7 @@ enum class AttackPhase {
 enum class EnemyState { 
     Idle,
     Chase,
-    Windup,
+    WindUp,
     Strike,
     Recover,
     Dead
