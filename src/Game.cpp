@@ -1,3 +1,4 @@
+#include <iostream>
 #include <optional>
 #include "Game.hpp"
 #include "SFML/Graphics/Rect.hpp"
@@ -72,6 +73,7 @@ Game::Game()
     , m_player({40.0f, 40.0f})
     , m_sword({90.0f, 24.0f})
     , m_attackPhase(AttackPhase::None) 
+    , m_enemy({40.0f, 40.0f})
     , m_enemyState(EnemyState::Idle)
     , m_enemyStateTimer(0.0f)
     , m_facing({1.0f, 0.0f})
@@ -79,12 +81,16 @@ Game::Game()
     , m_attackTimer(0.0f)
     , m_wantAttack(false)
 {
+    m_window.setFramerateLimit(144);
+    
     m_player.setFillColor(sf::Color::Green);
     m_player.setPosition({350.0f, 250.0f});
-    m_window.setFramerateLimit(144);
 
     m_sword.setFillColor(sf::Color::Yellow);
     m_sword.setOrigin({0.0f, 12.0f});
+
+    m_enemy.setFillColor(sf::Color::Magenta);
+    m_enemy.setPosition({420.0f, 500.0f});
 
     sf::RectangleShape upWall =    makeWall({0.f, 0.f  }, {800.f, 16.f });
     sf::RectangleShape downWall =  makeWall({0.f, 584.f}, {800.f, 16.f });
@@ -109,11 +115,11 @@ void Game::moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity) {
     for (const auto& wall : m_walls) {
         sf::FloatRect wallRect = wall.getGlobalBounds();
 
-        sf::FloatRect playerRect = m_player.getGlobalBounds();
+        sf::FloatRect bodyRect = body.getGlobalBounds();
 
-        playerRect.position.x += velocity.x;
+        bodyRect.position.x += velocity.x;
 
-        std::optional<sf::FloatRect> rect = playerRect.findIntersection(wallRect);
+        std::optional<sf::FloatRect> rect = bodyRect.findIntersection(wallRect);
 
         if (rect.has_value()) {
             const float invertDirection = velocity.x > 0 ? -1.0f : 1.0f;
@@ -125,11 +131,11 @@ void Game::moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity) {
     for (const auto& wall : m_walls) {
         sf::FloatRect wallRect = wall.getGlobalBounds();
 
-        sf::FloatRect playerRect = m_player.getGlobalBounds();
+        sf::FloatRect bodyRect = body.getGlobalBounds();
 
-        playerRect.position.y += velocity.y;
+        bodyRect.position.y += velocity.y;
 
-        std::optional<sf::FloatRect> rect = playerRect.findIntersection(wallRect);
+        std::optional<sf::FloatRect> rect = bodyRect.findIntersection(wallRect);
 
         if (rect.has_value()) {
             const float invertDirection = velocity.y > 0 ? -1.0f : 1.0f;
@@ -222,9 +228,51 @@ void Game::updatePlayer(sf::Time dt) {
     moveWithCollisions(m_player, velocity);
 }
 
+void Game::setEnemyState(EnemyState newState) {
+    std::cout << "state " << static_cast<int>(m_enemyState) << " to " << static_cast<int>(newState) << "\n";
+    m_enemyState = newState;
+    m_enemyStateTimer = 0.0f;
+}
+
+void Game::updateEnemy(sf::Time dt) {
+    constexpr float speed = 150.0f;
+    constexpr float kDetectionRange = 200.0f;
+    constexpr float kDetectionRangeSquared = kDetectionRange * kDetectionRange;
+    
+    sf::Vector2f playerCenter = m_player.getGlobalBounds().getCenter();
+    const sf::Vector2f enemyCenter = m_enemy.getGlobalBounds().getCenter();
+    
+    sf::Vector2f toPlayer = playerCenter - enemyCenter;
+
+    const float distanceToPlayerSquared =  toPlayer.lengthSquared();
+
+    if (distanceToPlayerSquared <= 0.0f) {
+        return;
+    }
+    
+    switch (m_enemyState) {
+        case EnemyState::Idle:
+            if (distanceToPlayerSquared < kDetectionRangeSquared) {
+                setEnemyState(EnemyState::Chase);
+            }
+            break;
+        case EnemyState::Chase: {
+                if (distanceToPlayerSquared > kDetectionRangeSquared) {
+                    setEnemyState(EnemyState::Idle);
+                }
+
+                sf::Vector2f velocity = toPlayer.normalized() * (speed * dt.asSeconds());
+                moveWithCollisions(m_enemy, velocity);
+            }
+            break;
+        default:
+            break;
+    }
+}
 
 void Game::update(sf::Time dt) {
     updatePlayer(dt);
+    updateEnemy(dt);
 }
 
 void Game::render() {
@@ -243,6 +291,7 @@ void Game::render() {
         m_window.draw(wall);
     }
     
+    m_window.draw(m_enemy);
 
     m_window.draw(m_player);
 

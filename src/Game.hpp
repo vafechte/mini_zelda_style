@@ -41,6 +41,7 @@ private:
 
     AttackPhase m_attackPhase;
 
+    sf::RectangleShape m_enemy;
     EnemyState m_enemyState;
     float m_enemyStateTimer;
 
