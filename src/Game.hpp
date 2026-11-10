@@ -39,6 +39,8 @@ private:
     sf::RectangleShape m_player;
     sf::RectangleShape m_sword;
 
+    sf::Vector2f m_playerKnockback;
+
     AttackPhase m_attackPhase;
 
     sf::RectangleShape m_enemy;

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <optional>
 #include <string_view>
+#include <cmath>
 #include "Game.hpp"
 #include "SFML/Graphics/Rect.hpp"
 #include "SFML/Graphics/RectangleShape.hpp"
@@ -11,6 +12,15 @@
 #include "SFML/Graphics/Color.hpp"
 #include "SFML/Window/Keyboard.hpp"
 #include "SFML/Window/VideoMode.hpp"
+
+namespace ZMath {
+    sf::Vector2f lerp(const sf::Vector2f& a, const sf::Vector2f& b, float t) {
+        return sf::Vector2f(
+            std::lerp(a.x, b.x, t),
+            std::lerp(a.y, b.y, t)
+        );
+    }
+};
 
 namespace {
     sf::RectangleShape makeWall(sf::Vector2f position, sf::Vector2f size) {
@@ -86,6 +96,7 @@ Game::Game()
     , m_window(sf::VideoMode({800, 600}), "My Window")
     , m_player({40.0f, 40.0f})
     , m_sword({90.0f, 24.0f})
+    , m_playerKnockback({0.0f, 0.0f})
     , m_attackPhase(AttackPhase::None) 
     , m_enemy({40.0f, 40.0f})
     , m_enemyState(EnemyState::Idle)
@@ -178,6 +189,20 @@ void Game::processEvents() {
 }
 
 void Game::updatePlayer(sf::Time dt) {
+    sf::Vector2f velocity;
+    
+    if (m_playerKnockback.lengthSquared() > 0.0f) {
+        
+        if (m_playerKnockback.lengthSquared() <= 20.0f) {
+            m_playerKnockback = {0.0f, 0.0f};
+        }
+        else {
+            moveWithCollisions(m_player, m_playerKnockback * dt.asSeconds());
+        }
+        
+        m_playerKnockback *= 0.90f;
+    }
+    
     if (m_attackTimer > 0.0f) {
         m_attackTimer -= dt.asSeconds();
         if (m_attackTimer <= 0.0f) {
@@ -237,7 +262,7 @@ void Game::updatePlayer(sf::Time dt) {
 
     m_facing = direction.normalized();
 
-    sf::Vector2f velocity = direction.normalized() * (m_speed * dt.asSeconds());
+    velocity = direction.normalized() * (m_speed * dt.asSeconds());
 
     moveWithCollisions(m_player, velocity);
 }
@@ -302,7 +327,7 @@ void Game::updateEnemy(sf::Time dt) {
         }
             break;
         case EnemyState::Strike: {
-            constexpr float kForce = 40.0f;
+            constexpr float kForce = 500.0f;
             
             m_enemy.setFillColor(sf::Color::Magenta);
 
@@ -312,11 +337,13 @@ void Game::updateEnemy(sf::Time dt) {
             }
 
             sf::Vector2f knockback = toPlayer.normalized() * kForce;
-            moveWithCollisions(m_player, knockback);
+            m_playerKnockback = knockback;
+            // moveWithCollisions(m_player, knockback);
             setEnemyState(EnemyState::Recover);
         }
+            break;
         case EnemyState::Recover: {
-            constexpr float recoverTime = 0.4f;
+            constexpr float recoverTime = 1.0f;
 
             m_enemyStateTimer += dt.asSeconds();
 
