@@ -1,6 +1,6 @@
-#include <iostream>
+// #include <iostream>
 #include <optional>
-#include <string_view>
+// #include <string_view>
 #include <cmath>
 #include "Game.hpp"
 #include "SFML/Graphics/Rect.hpp"
@@ -77,18 +77,18 @@ namespace {
         return direction;
     }
 
-    constexpr std::string_view getEnemyStateName(EnemyState state) {
-        switch (state) {
-            case EnemyState::Idle: return "Idle";
-            case EnemyState::Chase: return "Chase";
-            case EnemyState::WindUp: return "WindUp";
-            case EnemyState::Strike: return "Strike";
-            case EnemyState::Recover: return "Recover";
-            case EnemyState::Dead: return "Dead";
-        }
-
-        return "The current state is not include in the switch, please add it";
-    }
+//     constexpr std::string_view getEnemyStateName(EnemyState state) {
+//         switch (state) {
+//             case EnemyState::Idle: return "Idle";
+//             case EnemyState::Chase: return "Chase";
+//             case EnemyState::WindUp: return "WindUp";
+//             case EnemyState::Strike: return "Strike";
+//             case EnemyState::Recover: return "Recover";
+//             case EnemyState::Dead: return "Dead";
+//         }
+// 
+//         return "The current state is not include in the switch, please add it";
+//     }
 }
 
 Game::Game()
@@ -98,8 +98,9 @@ Game::Game()
     , m_sword({90.0f, 24.0f})
     , m_playerKnockback({0.0f, 0.0f})
     , m_attackPhase(AttackPhase::None) 
-    , m_enemy({40.0f, 40.0f})
+    , m_enemy(makeTarget({420.0f, 500.0f}, {40.0f, 40.0f}, sf::Color::Magenta))
     , m_enemyState(EnemyState::Idle)
+    , m_enemyKnockback({0.0f, 0.0f})
     , m_enemyStateTimer(0.0f)
     , m_facing({1.0f, 0.0f})
     , m_speed(250.0f)
@@ -114,8 +115,7 @@ Game::Game()
     m_sword.setFillColor(sf::Color::Yellow);
     m_sword.setOrigin({0.0f, 12.0f});
 
-    m_enemy.setFillColor(sf::Color::Magenta);
-    m_enemy.setPosition({420.0f, 500.0f});
+    m_enemy.hp = 3;
 
     sf::RectangleShape upWall =    makeWall({0.f, 0.f  }, {800.f, 16.f });
     sf::RectangleShape downWall =  makeWall({0.f, 584.f}, {800.f, 16.f });
@@ -128,12 +128,6 @@ Game::Game()
     m_walls.push_back(leftWall);
     m_walls.push_back(makeWall({200.f,  200.f}, {64.f,  64.f }));
     m_walls.push_back(makeWall({450.f,  350.f}, {96.f,  48.f }));
-
-    m_targets.push_back(makeTarget({80.0f, 80.0f}, {40.0f, 40.0f}, sf::Color::Red));
-    m_targets.push_back(makeTarget({400.0f, 280.0f}, {40.0f, 40.0f}, sf::Color::Red));
-    m_targets.push_back(makeTarget({180.0f, 380.0f}, {40.0f, 40.0f}, sf::Color::Red));
-    m_targets.push_back(makeTarget({300.0f, 500.0f}, {40.0f, 40.0f}, sf::Color::Red));
-    m_targets.push_back(makeTarget({500.0f, 400.0f}, {40.0f, 40.0f}, sf::Color::Blue));
 }
 
 void Game::moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity) {
@@ -191,17 +185,13 @@ void Game::processEvents() {
 void Game::updatePlayer(sf::Time dt) {
     sf::Vector2f velocity;
     
-    if (m_playerKnockback.lengthSquared() > 0.0f) {
-        
-        if (m_playerKnockback.lengthSquared() <= 20.0f) {
-            m_playerKnockback = {0.0f, 0.0f};
-        }
-        else {
-            moveWithCollisions(m_player, m_playerKnockback * dt.asSeconds());
-        }
-        
+    if (m_playerKnockback.lengthSquared() > 20.0f) {
+        moveWithCollisions(m_player, m_playerKnockback * dt.asSeconds());
+        m_attackPhase = AttackPhase::None;
+        m_wantAttack = false;
         m_playerKnockback *= 0.90f;
     }
+    // we don't need to set back m_playerKnockback to ZERO
     
     if (m_attackTimer > 0.0f) {
         m_attackTimer -= dt.asSeconds();
@@ -221,29 +211,29 @@ void Game::updatePlayer(sf::Time dt) {
         const sf::Vector2f playerCenter = m_player.getGlobalBounds().getCenter();
         m_sword.setPosition(playerCenter);
         m_sword.setRotation(m_facing.angle());
+
+        const sf::Vector2f enemyCenter = m_enemy.shape.getGlobalBounds().getCenter();
+
+        const sf::Vector2f toEnemy = enemyCenter - playerCenter;
         
-        for (auto& target: m_targets) {
-            if (target.hit) {
-                continue;
-            }
-            
-            const sf::Vector2f targetCenter = target.shape.getGlobalBounds().getCenter(); 
-            
-            const sf::Vector2f toTarget = targetCenter - playerCenter;
+        float distanceSquaredToTarget = toEnemy.lengthSquared();
 
-            const float distanceSquaredToTarget = toTarget.lengthSquared();
-
-            if (distanceSquaredToTarget <= 0.0f) {
-                continue;
-            }
-
-            const float facingDot = m_facing.dot(toTarget.normalized());
+        if (distanceSquaredToTarget > 0.0f) {
+            const float facingDot = m_facing.dot(toEnemy.normalized());
 
             if (
                 distanceSquaredToTarget < kRangeSquared &&
                 facingDot > kHalfAngleCos
             ) {
-                target.hit = true;
+                m_enemy.hp -= 1;
+                if (m_enemy.hp <= 0) {
+                    setEnemyState(EnemyState::Dead);
+                }
+                else {
+                    const float kForce = 500.0f;
+                    m_enemyKnockback = toEnemy.normalized() * kForce;
+                    setEnemyState(EnemyState::Idle);
+                }
             }
         }
     }
@@ -268,10 +258,10 @@ void Game::updatePlayer(sf::Time dt) {
 }
 
 void Game::setEnemyState(EnemyState newState) {
-    std::string_view oldStateName = getEnemyStateName(m_enemyState);
-    std::string_view newStateName = getEnemyStateName(newState);
-    
-    std::cout << "state " <<  oldStateName << " to " <<  newStateName << "\n";
+    // std::string_view oldStateName = getEnemyStateName(m_enemyState);
+    // std::string_view newStateName = getEnemyStateName(newState);
+    // 
+    // std::cout << "state " <<  oldStateName << " to " <<  newStateName << "\n";
     m_enemyState = newState;
     m_enemyStateTimer = 0.0f;
 }
@@ -284,7 +274,7 @@ void Game::updateEnemy(sf::Time dt) {
     constexpr float kDetectionRangeSquared = kDetectionRange * kDetectionRange;
     
     sf::Vector2f playerCenter = m_player.getGlobalBounds().getCenter();
-    const sf::Vector2f enemyCenter = m_enemy.getGlobalBounds().getCenter();
+    const sf::Vector2f enemyCenter = m_enemy.shape.getGlobalBounds().getCenter();
     
     sf::Vector2f toPlayer = playerCenter - enemyCenter;
 
@@ -293,7 +283,16 @@ void Game::updateEnemy(sf::Time dt) {
     if (distanceToPlayerSquared <= 0.0f) {
         return;
     }
-    
+
+    if (m_enemyKnockback.lengthSquared() > 20.0f) {
+        m_enemy.shape.setFillColor(m_enemy.baseColor);
+        moveWithCollisions(m_enemy.shape, m_enemyKnockback * dt.asSeconds());
+        m_enemyKnockback *= 0.90f;
+        return;
+    }
+
+    m_enemyKnockback = {0.0f, 0.0f};
+
     switch (m_enemyState) {
         case EnemyState::Idle:
             if (distanceToPlayerSquared < kDetectionRangeSquared) {
@@ -311,13 +310,13 @@ void Game::updateEnemy(sf::Time dt) {
             }
 
             sf::Vector2f velocity = toPlayer.normalized() * (speed * dt.asSeconds());
-            moveWithCollisions(m_enemy, velocity);
+            moveWithCollisions(m_enemy.shape, velocity);
         }
             break;
         case EnemyState::WindUp: {
             constexpr float WindUpChargeStrikeTime = 0.3f;
 
-            m_enemy.setFillColor(sf::Color::Yellow);
+            m_enemy.shape.setFillColor(sf::Color::Cyan);
             
             m_enemyStateTimer += dt.asSeconds();
 
@@ -329,7 +328,7 @@ void Game::updateEnemy(sf::Time dt) {
         case EnemyState::Strike: {
             constexpr float kForce = 500.0f;
             
-            m_enemy.setFillColor(sf::Color::Magenta);
+            m_enemy.shape.setFillColor(sf::Color::Magenta);
 
             if (distanceToPlayerSquared > kStrikeRangeSquared) {
                 setEnemyState(EnemyState::Chase);
@@ -338,7 +337,6 @@ void Game::updateEnemy(sf::Time dt) {
 
             sf::Vector2f knockback = toPlayer.normalized() * kForce;
             m_playerKnockback = knockback;
-            // moveWithCollisions(m_player, knockback);
             setEnemyState(EnemyState::Recover);
         }
             break;
@@ -352,7 +350,7 @@ void Game::updateEnemy(sf::Time dt) {
             }
         }
             break;
-        case EnemyState::Dead: break;
+        case EnemyState::Dead: m_enemy.shape.setFillColor(sf::Color(20, 20, 20, 255)); break;
         default:
             break;
     }
@@ -366,11 +364,6 @@ void Game::update(sf::Time dt) {
 void Game::render() {
     m_window.clear(sf::Color::Black);
     
-    for (auto& target : m_targets) {
-        target.shape.setFillColor(target.hit ? sf::Color::Yellow : target.baseColor);
-        m_window.draw(target.shape);
-    }
-
     if (m_attackPhase == AttackPhase::Swing) {
         m_window.draw(m_sword);
     }
@@ -378,11 +371,11 @@ void Game::render() {
     for (const auto& wall : m_walls) {
         m_window.draw(wall);
     }
+
+    m_window.draw(m_enemy.shape);
     
-    m_window.draw(m_enemy);
-
     m_window.draw(m_player);
-
+    
     m_window.display();
 }
 

@@ -9,7 +9,7 @@
 struct Target {
     sf::RectangleShape shape;
     sf::Color baseColor;
-    bool hit = false;
+    int hp = 0;
 };
 
 enum class AttackPhase {
@@ -43,12 +43,12 @@ private:
 
     AttackPhase m_attackPhase;
 
-    sf::RectangleShape m_enemy;
+    Target m_enemy;
     EnemyState m_enemyState;
+    sf::Vector2f m_enemyKnockback;
     float m_enemyStateTimer;
 
     std::vector<sf::RectangleShape> m_walls;
-    std::vector<Target> m_targets;
 
     sf::Vector2f m_facing;
 
