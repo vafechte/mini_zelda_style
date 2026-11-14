@@ -1,4 +1,5 @@
 // #include <iostream>
+#include <iostream>
 #include <optional>
 // #include <string_view>
 #include <cmath>
@@ -23,6 +24,8 @@ namespace ZMath {
 };
 
 namespace {
+    const float FRICTION_STRENGTH = 60.0f; 
+    
     sf::RectangleShape makeWall(sf::Vector2f position, sf::Vector2f size) {
         sf::RectangleShape wall(size);
 
@@ -189,7 +192,8 @@ void Game::updatePlayer(sf::Time dt) {
         moveWithCollisions(m_player, m_playerKnockback * dt.asSeconds());
         m_attackPhase = AttackPhase::None;
         m_wantAttack = false;
-        m_playerKnockback *= 0.90f;
+        std::cout << "dedans\n";
+        m_playerKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
     }
     // we don't need to set back m_playerKnockback to ZERO
     
@@ -210,6 +214,7 @@ void Game::updatePlayer(sf::Time dt) {
 
         const sf::Vector2f playerCenter = m_player.getGlobalBounds().getCenter();
         m_sword.setPosition(playerCenter);
+        // keeps in mind that m_facing is never reset so it's value is save 
         m_sword.setRotation(m_facing.angle());
 
         const sf::Vector2f enemyCenter = m_enemy.shape.getGlobalBounds().getCenter();
@@ -218,7 +223,7 @@ void Game::updatePlayer(sf::Time dt) {
         
         float distanceSquaredToTarget = toEnemy.lengthSquared();
 
-        if (distanceSquaredToTarget > 0.0f) {
+        if (m_enemyState != EnemyState::Dead && distanceSquaredToTarget > 0.0f) {
             const float facingDot = m_facing.dot(toEnemy.normalized());
 
             if (
@@ -287,7 +292,7 @@ void Game::updateEnemy(sf::Time dt) {
     if (m_enemyKnockback.lengthSquared() > 20.0f) {
         m_enemy.shape.setFillColor(m_enemy.baseColor);
         moveWithCollisions(m_enemy.shape, m_enemyKnockback * dt.asSeconds());
-        m_enemyKnockback *= 0.90f;
+        m_enemyKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
         return;
     }
 
