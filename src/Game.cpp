@@ -94,11 +94,13 @@ namespace {
 }
 
 Game::Game()
-    : m_fixedDt(sf::seconds(1.0f / 60.0f))
+    : m_gamePhase(GamePhase::Playing)
+    , m_fixedDt(sf::seconds(1.0f / 60.0f))
     , m_window(sf::VideoMode({800, 600}), "My Window")
     , m_player({40.0f, 40.0f})
     , m_sword({90.0f, 24.0f})
     , m_playerKnockback({0.0f, 0.0f})
+    , m_playerHp(1)
     , m_iframes(0.0f)
     , m_attackPhase(AttackPhase::None) 
     , m_enemy(makeTarget({420.0f, 500.0f}, {40.0f, 40.0f}, sf::Color::Magenta))
@@ -169,6 +171,10 @@ void Game::moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity) {
     body.move(velocity);
 }
 
+void Game::setGamePhase(GamePhase newGamePhase) {
+    m_gamePhase = newGamePhase;
+}
+
 void Game::processEvents() {
     while (const std::optional event = m_window.pollEvent()) {
         if (event->is<sf::Event::Closed>()) {
@@ -197,6 +203,11 @@ void Game::updatePlayer(sf::Time dt) {
         m_attackPhase = AttackPhase::None;
         m_wantAttack = false;
         m_playerKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
+    }
+    
+    else if (!m_playerHp ) {
+        setGamePhase(GamePhase::GameOver);
+        return;
     }
     // we don't need to set back m_playerKnockback to ZERO
     
@@ -347,10 +358,15 @@ void Game::updateEnemy(sf::Time dt) {
                 break;
             }
 
+
             if (m_iframes <= 0.0f) {
                 sf::Vector2f knockback = toPlayer.normalized() * kForce;
                 m_playerKnockback = knockback;
                 m_iframes = 1.0f;
+            }
+            
+            if (m_playerHp > 0) {
+                m_playerHp -= 1;
             }
             
             setEnemyState(EnemyState::Recover);
@@ -373,8 +389,18 @@ void Game::updateEnemy(sf::Time dt) {
 }
 
 void Game::update(sf::Time dt) {
-    updatePlayer(dt);
-    updateEnemy(dt);
+    switch (m_gamePhase) {
+        case GamePhase::Playing: 
+            updatePlayer(dt);
+            updateEnemy(dt);
+            break;
+        case GamePhase::Victory: break;
+        case GamePhase::GameOver: 
+            m_player.setFillColor(sf::Color(20, 20, 20, 255));
+            setGamePhase(GamePhase::Restart);
+            break;
+        case GamePhase::Restart: break;
+    }
 }
 
 void Game::render() {

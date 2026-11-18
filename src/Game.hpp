@@ -12,6 +12,13 @@ struct Target {
     int hp = 0;
 };
 
+enum class GamePhase { 
+    Playing, 
+    GameOver, 
+    Victory,
+    Restart
+};
+
 enum class AttackPhase {
     Swing,
     None
@@ -33,6 +40,7 @@ public:
     int run();
 
 private:
+    GamePhase m_gamePhase;
     sf::Time m_fixedDt;
     
     sf::RenderWindow m_window;
@@ -40,6 +48,7 @@ private:
     sf::RectangleShape m_sword;
 
     sf::Vector2f m_playerKnockback;
+    int m_playerHp;
     float m_iframes;
 
     AttackPhase m_attackPhase;
@@ -67,4 +76,6 @@ private:
     void moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity);
 
     void setEnemyState(EnemyState newState);
+
+    void setGamePhase(GamePhase newGamePhase);
 };
