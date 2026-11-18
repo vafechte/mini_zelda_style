@@ -1,8 +1,8 @@
 NAME = game
 
-install:
+build-system:
 	cmake -B build
 	
-run:
+run: build-system
 	cmake --build build
 	./build/$(NAME)

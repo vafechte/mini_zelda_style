@@ -40,6 +40,7 @@ private:
     sf::RectangleShape m_sword;
 
     sf::Vector2f m_playerKnockback;
+    float m_iframes;
 
     AttackPhase m_attackPhase;
 

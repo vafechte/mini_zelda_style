@@ -1,5 +1,4 @@
 // #include <iostream>
-#include <iostream>
 #include <optional>
 // #include <string_view>
 #include <cmath>
@@ -100,6 +99,7 @@ Game::Game()
     , m_player({40.0f, 40.0f})
     , m_sword({90.0f, 24.0f})
     , m_playerKnockback({0.0f, 0.0f})
+    , m_iframes(0.0f)
     , m_attackPhase(AttackPhase::None) 
     , m_enemy(makeTarget({420.0f, 500.0f}, {40.0f, 40.0f}, sf::Color::Magenta))
     , m_enemyState(EnemyState::Idle)
@@ -187,12 +187,15 @@ void Game::processEvents() {
 
 void Game::updatePlayer(sf::Time dt) {
     sf::Vector2f velocity;
+
+    if (m_iframes > 0.0f) {
+        m_iframes -= dt.asSeconds();
+    }
     
     if (m_playerKnockback.lengthSquared() > 20.0f) {
         moveWithCollisions(m_player, m_playerKnockback * dt.asSeconds());
         m_attackPhase = AttackPhase::None;
         m_wantAttack = false;
-        std::cout << "dedans\n";
         m_playerKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
     }
     // we don't need to set back m_playerKnockback to ZERO
@@ -321,10 +324,14 @@ void Game::updateEnemy(sf::Time dt) {
         case EnemyState::WindUp: {
             constexpr float WindUpChargeStrikeTime = 0.3f;
 
-            m_enemy.shape.setFillColor(sf::Color::Cyan);
+            if (m_iframes > 0.0f) {
+               setEnemyState(EnemyState::Chase);
+               break;
+            }
             
+            m_enemy.shape.setFillColor(sf::Color::Cyan);
             m_enemyStateTimer += dt.asSeconds();
-
+            
             if (m_enemyStateTimer >= WindUpChargeStrikeTime) {
                 setEnemyState(EnemyState::Strike);
             }
@@ -340,8 +347,12 @@ void Game::updateEnemy(sf::Time dt) {
                 break;
             }
 
-            sf::Vector2f knockback = toPlayer.normalized() * kForce;
-            m_playerKnockback = knockback;
+            if (m_iframes <= 0.0f) {
+                sf::Vector2f knockback = toPlayer.normalized() * kForce;
+                m_playerKnockback = knockback;
+                m_iframes = 1.0f;
+            }
+            
             setEnemyState(EnemyState::Recover);
         }
             break;
