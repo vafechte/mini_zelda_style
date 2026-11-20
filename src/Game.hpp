@@ -2,8 +2,10 @@
 #include "SFML/Graphics/Color.hpp"
 #include "SFML/Graphics/RectangleShape.hpp"
 #include "SFML/Graphics/RenderWindow.hpp"
+#include "SFML/Graphics/Text.hpp"
 #include "SFML/System/Time.hpp"
 #include "SFML/System/Vector2.hpp"
+#include "SFML/Graphics/Font.hpp"
 #include <vector>
 
 struct Target {
@@ -16,7 +18,6 @@ enum class GamePhase {
     Playing, 
     GameOver, 
     Victory,
-    Restart
 };
 
 enum class AttackPhase {
@@ -67,6 +68,9 @@ private:
 
     bool m_wantAttack;
 
+    sf::Text m_hudText;
+    sf::Font m_font;
+
     void processEvents();
     void update(sf::Time dt);
     void updatePlayer(sf::Time dt);
@@ -74,6 +78,8 @@ private:
     void render();
 
     void moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity);
+
+    void resetGame();
 
     void setEnemyState(EnemyState newState);
 

@@ -1,7 +1,7 @@
-// #include <iostream>
+#include <iostream>
 #include <optional>
-// #include <string_view>
 #include <cmath>
+#include <stdexcept>
 #include "Game.hpp"
 #include "SFML/Graphics/Rect.hpp"
 #include "SFML/Graphics/RectangleShape.hpp"
@@ -94,23 +94,12 @@ namespace {
 }
 
 Game::Game()
-    : m_gamePhase(GamePhase::Playing)
-    , m_fixedDt(sf::seconds(1.0f / 60.0f))
+    : m_fixedDt(sf::seconds(1.0f / 60.0f))
     , m_window(sf::VideoMode({800, 600}), "My Window")
     , m_player({40.0f, 40.0f})
     , m_sword({90.0f, 24.0f})
-    , m_playerKnockback({0.0f, 0.0f})
-    , m_playerHp(1)
-    , m_iframes(0.0f)
-    , m_attackPhase(AttackPhase::None) 
-    , m_enemy(makeTarget({420.0f, 500.0f}, {40.0f, 40.0f}, sf::Color::Magenta))
-    , m_enemyState(EnemyState::Idle)
-    , m_enemyKnockback({0.0f, 0.0f})
-    , m_enemyStateTimer(0.0f)
-    , m_facing({1.0f, 0.0f})
     , m_speed(250.0f)
-    , m_attackTimer(0.0f)
-    , m_wantAttack(false)
+    , m_hudText(m_font)
 {
     m_window.setFramerateLimit(144);
     
@@ -120,7 +109,13 @@ Game::Game()
     m_sword.setFillColor(sf::Color::Yellow);
     m_sword.setOrigin({0.0f, 12.0f});
 
-    m_enemy.hp = 3;
+    if (!m_font.openFromFile("assets/fonts/monogram-extended-italic.ttf")) {
+        throw std::runtime_error("Unable to find the font");
+    }
+
+    m_hudText.setPosition({140.0f, 60.0f});
+    m_hudText.setCharacterSize(30);
+    m_hudText.setFillColor(sf::Color::Red);
 
     sf::RectangleShape upWall =    makeWall({0.f, 0.f  }, {800.f, 16.f });
     sf::RectangleShape downWall =  makeWall({0.f, 584.f}, {800.f, 16.f });
@@ -133,6 +128,31 @@ Game::Game()
     m_walls.push_back(leftWall);
     m_walls.push_back(makeWall({200.f,  200.f}, {64.f,  64.f }));
     m_walls.push_back(makeWall({450.f,  350.f}, {96.f,  48.f }));
+
+    resetGame();
+}
+
+void Game::resetGame() {
+    setGamePhase(GamePhase::Playing);
+    
+    m_playerHp = 3;
+    m_player.setPosition({350.0f, 250.0f});
+    m_player.setFillColor(sf::Color::Green);
+    m_sword.setPosition({90.0f, 24.0f});
+    m_playerKnockback = { 0.0f, 0.0f };
+    
+    m_iframes = 0.0f;
+    m_attackPhase = AttackPhase::None;
+    m_wantAttack = false;
+    
+    m_enemy = makeTarget({420.0f, 500.0f}, {40.0f, 40.0f}, sf::Color::Magenta);
+    m_enemy.hp = 3;
+    setEnemyState(EnemyState::Idle);
+    
+    m_enemyKnockback = {0.0f, 0.0f};
+    m_enemyStateTimer = 0.0f;
+    m_facing = {1.0f, 0.0f};
+    m_attackTimer = 0.0f;
 }
 
 void Game::moveWithCollisions(sf::RectangleShape& body, sf::Vector2f velocity) {
@@ -184,6 +204,15 @@ void Game::processEvents() {
             if (keyPressed->scancode == sf::Keyboard::Scancode::Space) {
                 m_wantAttack = true;
             }
+            else if (keyPressed->scancode == sf::Keyboard::Scancode::R) {
+                switch (m_gamePhase) {
+                    case GamePhase::GameOver:
+                    case GamePhase::Victory:
+                        resetGame();
+                        break;
+                    default: break;
+                }
+            }
             else if (keyPressed->scancode == sf::Keyboard::Scancode::Escape) {
                 m_window.close();
             }
@@ -204,7 +233,6 @@ void Game::updatePlayer(sf::Time dt) {
         m_wantAttack = false;
         m_playerKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
     }
-    
     else if (!m_playerHp ) {
         setGamePhase(GamePhase::GameOver);
         return;
@@ -244,11 +272,9 @@ void Game::updatePlayer(sf::Time dt) {
                 distanceSquaredToTarget < kRangeSquared &&
                 facingDot > kHalfAngleCos
             ) {
-                m_enemy.hp -= 1;
-                if (m_enemy.hp <= 0) {
-                    setEnemyState(EnemyState::Dead);
-                }
-                else {
+                if (m_enemy.hp > 0) {
+                    m_enemy.hp -= 1;
+                    m_enemy.shape.setFillColor(sf::Color::Yellow);
                     const float kForce = 500.0f;
                     m_enemyKnockback = toEnemy.normalized() * kForce;
                     setEnemyState(EnemyState::Idle);
@@ -264,6 +290,7 @@ void Game::updatePlayer(sf::Time dt) {
     }
     
     const sf::Vector2f direction = getDirection();
+
 
     if (direction.lengthSquared() <= 0.0f) {
         return;
@@ -303,11 +330,18 @@ void Game::updateEnemy(sf::Time dt) {
         return;
     }
 
-    if (m_enemyKnockback.lengthSquared() > 20.0f) {
-        m_enemy.shape.setFillColor(m_enemy.baseColor);
+    if (m_enemyKnockback.lengthSquared() >= 20.0f) {
         moveWithCollisions(m_enemy.shape, m_enemyKnockback * dt.asSeconds());
         m_enemyKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
         return;
+    }
+    else if (m_enemy.hp <= 0) {
+        setGamePhase(GamePhase::Victory);
+        setEnemyState(EnemyState::Dead);
+    }
+
+    if (m_enemyKnockback.lengthSquared() < 20.0f) {
+        m_enemy.shape.setFillColor(m_enemy.baseColor);
     }
 
     m_enemyKnockback = {0.0f, 0.0f};
@@ -358,16 +392,13 @@ void Game::updateEnemy(sf::Time dt) {
                 break;
             }
 
-
-            if (m_iframes <= 0.0f) {
+            if (m_iframes <= 0.0f && m_playerHp > 0) {
                 sf::Vector2f knockback = toPlayer.normalized() * kForce;
                 m_playerKnockback = knockback;
                 m_iframes = 1.0f;
-            }
-            
-            if (m_playerHp > 0) {
                 m_playerHp -= 1;
             }
+            
             
             setEnemyState(EnemyState::Recover);
         }
@@ -394,12 +425,12 @@ void Game::update(sf::Time dt) {
             updatePlayer(dt);
             updateEnemy(dt);
             break;
-        case GamePhase::Victory: break;
+        case GamePhase::Victory: 
+            m_attackPhase = AttackPhase::None;
+            break;
         case GamePhase::GameOver: 
             m_player.setFillColor(sf::Color(20, 20, 20, 255));
-            setGamePhase(GamePhase::Restart);
             break;
-        case GamePhase::Restart: break;
     }
 }
 
@@ -417,6 +448,27 @@ void Game::render() {
     m_window.draw(m_enemy.shape);
     
     m_window.draw(m_player);
+
+    sf::Text endingText { m_font, ""};
+    
+    endingText.setPosition({200.0f, 100.0f});
+    endingText.setFillColor(sf::Color::Red);
+
+    switch (m_gamePhase) {
+        case GamePhase::Victory: 
+            endingText.setString("You Win");
+            break;
+        case GamePhase::GameOver: 
+            endingText.setString("You Lose");
+            break;
+        default: break;
+    }
+
+    m_window.draw(endingText);
+    
+    m_hudText.setString("HP : " + std::to_string(m_playerHp));
+
+    m_window.draw(m_hudText);
     
     m_window.display();
 }
