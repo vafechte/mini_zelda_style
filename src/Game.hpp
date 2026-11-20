@@ -42,7 +42,9 @@ public:
 
 private:
     GamePhase m_gamePhase;
-    sf::Time m_fixedDt;
+    const sf::Time m_fixedDt;
+
+    float m_hitstop = 0.0f;
     
     sf::RenderWindow m_window;
     sf::RectangleShape m_player;
@@ -68,6 +70,7 @@ private:
 
     bool m_wantAttack;
 
+    sf::Text m_endingText;
     sf::Text m_hudText;
     sf::Font m_font;
 

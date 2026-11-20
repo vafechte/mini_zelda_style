@@ -1,6 +1,4 @@
-#include <iostream>
 #include <optional>
-#include <cmath>
 #include <stdexcept>
 #include "Game.hpp"
 #include "SFML/Graphics/Rect.hpp"
@@ -12,15 +10,6 @@
 #include "SFML/Graphics/Color.hpp"
 #include "SFML/Window/Keyboard.hpp"
 #include "SFML/Window/VideoMode.hpp"
-
-namespace ZMath {
-    sf::Vector2f lerp(const sf::Vector2f& a, const sf::Vector2f& b, float t) {
-        return sf::Vector2f(
-            std::lerp(a.x, b.x, t),
-            std::lerp(a.y, b.y, t)
-        );
-    }
-};
 
 namespace {
     const float FRICTION_STRENGTH = 60.0f; 
@@ -78,19 +67,6 @@ namespace {
     
         return direction;
     }
-
-//     constexpr std::string_view getEnemyStateName(EnemyState state) {
-//         switch (state) {
-//             case EnemyState::Idle: return "Idle";
-//             case EnemyState::Chase: return "Chase";
-//             case EnemyState::WindUp: return "WindUp";
-//             case EnemyState::Strike: return "Strike";
-//             case EnemyState::Recover: return "Recover";
-//             case EnemyState::Dead: return "Dead";
-//         }
-// 
-//         return "The current state is not include in the switch, please add it";
-//     }
 }
 
 Game::Game()
@@ -99,6 +75,7 @@ Game::Game()
     , m_player({40.0f, 40.0f})
     , m_sword({90.0f, 24.0f})
     , m_speed(250.0f)
+    , m_endingText(m_font)
     , m_hudText(m_font)
 {
     m_window.setFramerateLimit(144);
@@ -113,6 +90,10 @@ Game::Game()
         throw std::runtime_error("Unable to find the font");
     }
 
+    m_endingText.setPosition({140.0f, 80.0f});
+    m_endingText.setCharacterSize(30);
+    m_endingText.setFillColor(sf::Color::Red);
+    
     m_hudText.setPosition({140.0f, 60.0f});
     m_hudText.setCharacterSize(30);
     m_hudText.setFillColor(sf::Color::Red);
@@ -134,6 +115,8 @@ Game::Game()
 
 void Game::resetGame() {
     setGamePhase(GamePhase::Playing);
+
+    m_hitstop = 0;
     
     m_playerHp = 3;
     m_player.setPosition({350.0f, 250.0f});
@@ -221,20 +204,24 @@ void Game::processEvents() {
 }
 
 void Game::updatePlayer(sf::Time dt) {
-    sf::Vector2f velocity;
-
     if (m_iframes > 0.0f) {
         m_iframes -= dt.asSeconds();
     }
     
+    // Death anim : player keeps sliding with knockback first,
+    // GameOver is only declared once it stops.
     if (m_playerKnockback.lengthSquared() > 20.0f) {
         moveWithCollisions(m_player, m_playerKnockback * dt.asSeconds());
         m_attackPhase = AttackPhase::None;
         m_wantAttack = false;
         m_playerKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
     }
-    else if (!m_playerHp ) {
+    else if (!m_playerHp) {
         setGamePhase(GamePhase::GameOver);
+        return;
+    }
+
+    if (!m_playerHp) {
         return;
     }
     // we don't need to set back m_playerKnockback to ZERO
@@ -273,6 +260,7 @@ void Game::updatePlayer(sf::Time dt) {
                 facingDot > kHalfAngleCos
             ) {
                 if (m_enemy.hp > 0) {
+                    m_hitstop = 0.08;
                     m_enemy.hp -= 1;
                     m_enemy.shape.setFillColor(sf::Color::Yellow);
                     const float kForce = 500.0f;
@@ -298,16 +286,12 @@ void Game::updatePlayer(sf::Time dt) {
 
     m_facing = direction.normalized();
 
-    velocity = direction.normalized() * (m_speed * dt.asSeconds());
+    sf::Vector2f velocity = direction.normalized() * (m_speed * dt.asSeconds());
 
     moveWithCollisions(m_player, velocity);
 }
 
 void Game::setEnemyState(EnemyState newState) {
-    // std::string_view oldStateName = getEnemyStateName(m_enemyState);
-    // std::string_view newStateName = getEnemyStateName(newState);
-    // 
-    // std::cout << "state " <<  oldStateName << " to " <<  newStateName << "\n";
     m_enemyState = newState;
     m_enemyStateTimer = 0.0f;
 }
@@ -330,6 +314,8 @@ void Game::updateEnemy(sf::Time dt) {
         return;
     }
 
+    // Death anim : enemy keeps sliding with knockback first,
+    // Victory is only declared once it stops.
     if (m_enemyKnockback.lengthSquared() >= 20.0f) {
         moveWithCollisions(m_enemy.shape, m_enemyKnockback * dt.asSeconds());
         m_enemyKnockback *= std::pow(0.90f, FRICTION_STRENGTH * dt.asSeconds());
@@ -422,6 +408,11 @@ void Game::updateEnemy(sf::Time dt) {
 void Game::update(sf::Time dt) {
     switch (m_gamePhase) {
         case GamePhase::Playing: 
+            if (m_hitstop > 0.0f) {
+                m_hitstop -= dt.asSeconds();
+                break;
+            }
+            
             updatePlayer(dt);
             updateEnemy(dt);
             break;
@@ -449,22 +440,18 @@ void Game::render() {
     
     m_window.draw(m_player);
 
-    sf::Text endingText { m_font, ""};
-    
-    endingText.setPosition({200.0f, 100.0f});
-    endingText.setFillColor(sf::Color::Red);
 
     switch (m_gamePhase) {
         case GamePhase::Victory: 
-            endingText.setString("You Win");
+            m_endingText.setString("You Win");
             break;
         case GamePhase::GameOver: 
-            endingText.setString("You Lose");
+            m_endingText.setString("You Lose");
             break;
         default: break;
     }
 
-    m_window.draw(endingText);
+    m_window.draw(m_endingText);
     
     m_hudText.setString("HP : " + std::to_string(m_playerHp));
 
